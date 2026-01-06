@@ -20,7 +20,6 @@ pipeline {
         stage('Prepare Application on EC2') {
             steps {
                 withCredentials([
-                    file(credentialsId: 'ec2-pem', variable: 'EC2_KEY'),
                     string(credentialsId: 'MONGO_URL', variable: 'MONGO_URL'),
                     string(credentialsId: 'JWT_SECRET', variable: 'JWT_SECRET'),
                     string(credentialsId: 'GOOGLE_CLIENT_ID', variable: 'GOOGLE_CLIENT_ID'),
@@ -28,7 +27,7 @@ pipeline {
                 ]) {
 
                     bat """
-                    ssh -i %EC2_KEY% -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
+                    ssh -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
                     "set -e && ^
                      mkdir -p %APP_DIR% && ^
                      cd %APP_DIR% && ^
@@ -52,37 +51,33 @@ EOF"
 
         stage('Build Docker Image (on EC2)') {
             steps {
-                withCredentials([file(credentialsId: 'ec2-pem', variable: 'EC2_KEY')]) {
-                    bat """
-                    ssh -i %EC2_KEY% -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
-                    "cd %APP_DIR% && docker build -t %IMAGE% ."
-                    """
-                }
+                bat """
+                ssh -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
+                "cd %APP_DIR% && docker build -t %IMAGE% ."
+                """
             }
         }
 
         stage('Deploy Docker Container (on EC2)') {
             steps {
-                withCredentials([file(credentialsId: 'ec2-pem', variable: 'EC2_KEY')]) {
-                    bat """
-                    ssh -i %EC2_KEY% -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
-                    "docker stop skillsync || true && ^
-                     docker rm skillsync || true && ^
-                     docker run -d ^
-                       --name skillsync ^
-                       --restart unless-stopped ^
-                       --env-file %APP_DIR%/.env ^
-                       -p 80:5008 ^
-                       %IMAGE%"
-                    """
-                }
+                bat """
+                ssh -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
+                "docker stop skillsync || true && ^
+                 docker rm skillsync || true && ^
+                 docker run -d ^
+                   --name skillsync ^
+                   --restart unless-stopped ^
+                   --env-file %APP_DIR%/.env ^
+                   -p 80:5008 ^
+                   %IMAGE%"
+                """
             }
         }
     }
 
     post {
         success {
-            echo "✅ SkillSync Docker build & deployment successful"
+            echo "✅ SkillSync deployed successfully"
         }
         failure {
             echo "❌ SkillSync pipeline failed"
