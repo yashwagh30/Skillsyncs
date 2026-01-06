@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        EC2_USER = "ubuntu"
         EC2_HOST = "43.205.254.44"
         APP_DIR  = "/home/ubuntu/Skillsync"
         IMAGE    = "yashwagh30/skillsync:latest"
@@ -12,14 +11,18 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/yashwagh30/Skillsyncs.git'
+                git url: 'https://github.com/yashwagh30/Skillsyncs.git', branch: 'main'
             }
         }
 
-        stage('Prepare Application on EC2') {
+        stage('Deploy to EC2') {
             steps {
                 withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'ec2-ssh',
+                        keyFileVariable: 'SSH_KEY',
+                        usernameVariable: 'SSH_USER'
+                    ),
                     string(credentialsId: 'MONGO_URL', variable: 'MONGO_URL'),
                     string(credentialsId: 'JWT_SECRET', variable: 'JWT_SECRET'),
                     string(credentialsId: 'GOOGLE_CLIENT_ID', variable: 'GOOGLE_CLIENT_ID'),
@@ -27,7 +30,7 @@ pipeline {
                 ]) {
 
                     bat """
-                    ssh -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
+                    ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% ^
                     "set -e && ^
                      mkdir -p %APP_DIR% && ^
                      cd %APP_DIR% && ^
@@ -36,51 +39,28 @@ pipeline {
                      else ^
                        git pull origin main; ^
                      fi && ^
-                     cat <<EOF > .env ^
-MONGO_URL=%MONGO_URL% ^
-JWT_SECRET=%JWT_SECRET% ^
-GOOGLE_CLIENT_ID=%GOOGLE_CLIENT_ID% ^
-GOOGLE_CLIENT_SECRET=%GOOGLE_CLIENT_SECRET% ^
-NODE_ENV=production ^
-PORT=5008 ^
-EOF"
+                     echo MONGO_URL=%MONGO_URL% > .env && ^
+                     echo JWT_SECRET=%JWT_SECRET% >> .env && ^
+                     echo GOOGLE_CLIENT_ID=%GOOGLE_CLIENT_ID% >> .env && ^
+                     echo GOOGLE_CLIENT_SECRET=%GOOGLE_CLIENT_SECRET% >> .env && ^
+                     echo NODE_ENV=production >> .env && ^
+                     echo PORT=5008 >> .env && ^
+                     docker stop skillsync || true && ^
+                     docker rm skillsync || true && ^
+                     docker build -t %IMAGE% . && ^
+                     docker run -d --name skillsync --env-file .env -p 80:5008 %IMAGE%"
                     """
                 }
-            }
-        }
-
-        stage('Build Docker Image (on EC2)') {
-            steps {
-                bat """
-                ssh -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
-                "cd %APP_DIR% && docker build -t %IMAGE% ."
-                """
-            }
-        }
-
-        stage('Deploy Docker Container (on EC2)') {
-            steps {
-                bat """
-                ssh -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
-                "docker stop skillsync || true && ^
-                 docker rm skillsync || true && ^
-                 docker run -d ^
-                   --name skillsync ^
-                   --restart unless-stopped ^
-                   --env-file %APP_DIR%/.env ^
-                   -p 80:5008 ^
-                   %IMAGE%"
-                """
             }
         }
     }
 
     post {
         success {
-            echo "✅ SkillSync deployed successfully"
+            echo "✅ SkillSync deployed successfully on EC2"
         }
         failure {
-            echo "❌ SkillSync pipeline failed"
+            echo "❌ SkillSync deployment failed"
         }
     }
 }
