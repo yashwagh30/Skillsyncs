@@ -17,40 +17,63 @@ pipeline {
             }
         }
 
-        stage('Deploy on EC2') {
+        stage('Prepare Application on EC2') {
             steps {
-                sshagent(['ec2-ssh']) {
-                    sh """
-                    ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << 'EOF'
-                        set -e
+                withCredentials([
+                    file(credentialsId: 'ec2-pem', variable: 'EC2_KEY'),
+                    string(credentialsId: 'MONGO_URL', variable: 'MONGO_URL'),
+                    string(credentialsId: 'JWT_SECRET', variable: 'JWT_SECRET'),
+                    string(credentialsId: 'GOOGLE_CLIENT_ID', variable: 'GOOGLE_CLIENT_ID'),
+                    string(credentialsId: 'GOOGLE_CLIENT_SECRET', variable: 'GOOGLE_CLIENT_SECRET')
+                ]) {
 
-                        # Clone or update repo
-                        if [ ! -d "${APP_DIR}" ]; then
-                          git clone https://github.com/yashwagh30/Skillsyncs.git ${APP_DIR}
-                        fi
-                        cd ${APP_DIR}
-                        git pull origin main
+                    bat """
+                    ssh -i %EC2_KEY% -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
+                    "set -e && ^
+                     mkdir -p %APP_DIR% && ^
+                     cd %APP_DIR% && ^
+                     if [ ! -d .git ]; then ^
+                       git clone https://github.com/yashwagh30/Skillsyncs.git .; ^
+                     else ^
+                       git pull origin main; ^
+                     fi && ^
+                     cat <<EOF > .env ^
+MONGO_URL=%MONGO_URL% ^
+JWT_SECRET=%JWT_SECRET% ^
+GOOGLE_CLIENT_ID=%GOOGLE_CLIENT_ID% ^
+GOOGLE_CLIENT_SECRET=%GOOGLE_CLIENT_SECRET% ^
+NODE_ENV=production ^
+PORT=5008 ^
+EOF"
+                    """
+                }
+            }
+        }
 
-                        # Create .env from injected secrets
-                        cat <<EOT > .env
-MONGO_URL=${MONGO_URL}
-JWT_SECRET=${JWT_SECRET}
-GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-NODE_ENV=production
-PORT=5008
-EOT
+        stage('Build Docker Image (on EC2)') {
+            steps {
+                withCredentials([file(credentialsId: 'ec2-pem', variable: 'EC2_KEY')]) {
+                    bat """
+                    ssh -i %EC2_KEY% -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
+                    "cd %APP_DIR% && docker build -t %IMAGE% ."
+                    """
+                }
+            }
+        }
 
-                        # Build and run container
-                        docker build -t ${IMAGE} .
-                        docker stop skillsync || true
-                        docker rm skillsync || true
-                        docker run -d \
-                          --name skillsync \
-                          --env-file .env \
-                          -p 80:5008 \
-                          ${IMAGE}
-                    EOF
+        stage('Deploy Docker Container (on EC2)') {
+            steps {
+                withCredentials([file(credentialsId: 'ec2-pem', variable: 'EC2_KEY')]) {
+                    bat """
+                    ssh -i %EC2_KEY% -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
+                    "docker stop skillsync || true && ^
+                     docker rm skillsync || true && ^
+                     docker run -d ^
+                       --name skillsync ^
+                       --restart unless-stopped ^
+                       --env-file %APP_DIR%/.env ^
+                       -p 80:5008 ^
+                       %IMAGE%"
                     """
                 }
             }
@@ -59,10 +82,10 @@ EOT
 
     post {
         success {
-            echo "✅ SkillSync deployed successfully"
+            echo "✅ SkillSync Docker build & deployment successful"
         }
         failure {
-            echo "❌ Deployment failed"
+            echo "❌ SkillSync pipeline failed"
         }
     }
 }
