@@ -30,25 +30,8 @@ pipeline {
                 ]) {
 
                     bat """
-                    ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%EC2_HOST% ^
-                    "set -e && ^
-                     mkdir -p %APP_DIR% && ^
-                     cd %APP_DIR% && ^
-                     if [ ! -d .git ]; then ^
-                       git clone https://github.com/yashwagh30/Skillsyncs.git .; ^
-                     else ^
-                       git pull origin main; ^
-                     fi && ^
-                     echo MONGO_URL=%MONGO_URL% > .env && ^
-                     echo JWT_SECRET=%JWT_SECRET% >> .env && ^
-                     echo GOOGLE_CLIENT_ID=%GOOGLE_CLIENT_ID% >> .env && ^
-                     echo GOOGLE_CLIENT_SECRET=%GOOGLE_CLIENT_SECRET% >> .env && ^
-                     echo NODE_ENV=production >> .env && ^
-                     echo PORT=5008 >> .env && ^
-                     docker stop skillsync || true && ^
-                     docker rm skillsync || true && ^
-                     docker build -t %IMAGE% . && ^
-                     docker run -d --name skillsync --env-file .env -p 80:5008 %IMAGE%"
+                    ssh -o StrictHostKeyChecking=no -i "%SSH_KEY%" %SSH_USER%@%EC2_HOST% ^
+                    "bash -s" < deploy.sh
                     """
                 }
             }
@@ -57,7 +40,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ SkillSync deployed successfully on EC2"
+            echo "✅ SkillSync deployed successfully"
         }
         failure {
             echo "❌ SkillSync deployment failed"
