@@ -5,19 +5,21 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy dependency files
+# Copy dependency files first (better cache)
 COPY package.json package-lock.json ./
 
-# Install dependencies
 RUN npm install --legacy-peer-deps
 
-# Copy full project
-COPY . .
+# Copy source code only
+COPY client ./client
+COPY server ./server
+COPY shared ./shared
+COPY tsconfig.json .
+COPY vite.config.* ./
+COPY tailwind.config.* ./
+COPY postcss.config.* ./
 
-# Build frontend (Vite)
-RUN npm run build:frontend
-
-# Build backend (esbuild)
+# Build frontend + backend (single command)
 RUN npm run build
 
 # =========================
@@ -27,16 +29,18 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy only required build output
+ENV NODE_ENV=production
+
+# Copy build output and required files
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/package-lock.json ./
 
-# Install only production deps
+# Install only production dependencies
 RUN npm install --omit=dev --legacy-peer-deps
 
-# App runs on this port
+# Expose backend port
 EXPOSE 5008
 
-# Start backend server
+# Start server
 CMD ["node", "dist/index.js"]
