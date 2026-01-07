@@ -23,13 +23,15 @@ jobs:
 
       # 3️⃣ Build Docker image
       - name: Build Docker image
-        run: docker build -t yashwagh30/skillsync:latest .
+        run: |
+          docker build -t yashwagh30/skillsync:latest .
 
       # 4️⃣ Push Docker image
       - name: Push Docker image
-        run: docker push yashwagh30/skillsync:latest
+        run: |
+          docker push yashwagh30/skillsync:latest
 
-      # 5️⃣ Setup SSH
+      # 5️⃣ Setup SSH for EC2
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -37,34 +39,34 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      # 6️⃣ Deploy on EC2 (FIXED)
+      # 6️⃣ Deploy on EC2 (CORRECTED)
       - name: Deploy on EC2
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
 
-            docker pull yashwagh30/skillsync:latest
+          docker pull yashwagh30/skillsync:latest
 
-            docker stop skillsync || true
-            docker rm skillsync || true
+          docker stop skillsync || true
+          docker rm skillsync || true
 
-            cat > .env << 'EOT'
-            MONGO_URL=${{ secrets.MONGO_URL }}
-            JWT_SECRET=${{ secrets.JWT_SECRET }}
-            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-            GOOGLE_CALLBACK_URL=${{ secrets.GOOGLE_CALLBACK_URL }}
-            BACKEND_URL=http://43.205.254.44
-            FRONTEND_URL=http://43.205.254.44
-            DIGITAL_OCEAN_AGENT_ENDPOINT=${{ secrets.DIGITAL_OCEAN_AGENT_ENDPOINT }}
-            DIGITAL_OCEAN_ACCESS_KEY=${{ secrets.DIGITAL_OCEAN_ACCESS_KEY }}
-            NODE_ENV=production
-            PORT=5008
-            EOT
+          cat > .env << 'EOT'
+          MONGO_URL=${{ secrets.MONGO_URL }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_CALLBACK_URL=${{ secrets.GOOGLE_CALLBACK_URL }}
+          BACKEND_URL=http://${{ secrets.EC2_HOST }}
+          FRONTEND_URL=http://${{ secrets.EC2_HOST }}
+          DIGITAL_OCEAN_AGENT_ENDPOINT=${{ secrets.DIGITAL_OCEAN_AGENT_ENDPOINT }}
+          DIGITAL_OCEAN_ACCESS_KEY=${{ secrets.DIGITAL_OCEAN_ACCESS_KEY }}
+          NODE_ENV=production
+          PORT=5008
+          EOT
 
-            docker run -d \
-              --name skillsync \
-              --env-file .env \
-              -p 80:5008 \
-              yashwagh30/skillsync:latest
+          docker run -d \
+            --name skillsync \
+            --env-file .env \
+            -p 80:5008 \
+            yashwagh30/skillsync:latest
 
           EOF
