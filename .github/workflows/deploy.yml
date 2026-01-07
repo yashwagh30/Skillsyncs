@@ -48,12 +48,16 @@ jobs:
             docker stop skillsync || true
             docker rm skillsync || true
 
-            cat <<EOT > .env
+            cat > .env << 'EOT'
             MONGO_URL=${{ secrets.MONGO_URL }}
             JWT_SECRET=${{ secrets.JWT_SECRET }}
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
             GOOGLE_CALLBACK_URL=${{ secrets.GOOGLE_CALLBACK_URL }}
+            BACKEND_URL=http://43.205.254.44
+            FRONTEND_URL=http://43.205.254.44
+            DIGITAL_OCEAN_AGENT_ENDPOINT=${{ secrets.DIGITAL_OCEAN_AGENT_ENDPOINT }}
+            DIGITAL_OCEAN_ACCESS_KEY=${{ secrets.DIGITAL_OCEAN_ACCESS_KEY }}
             NODE_ENV=production
             PORT=5008
             EOT
