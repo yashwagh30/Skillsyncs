@@ -62,9 +62,9 @@ jobs:
             PORT=5008
             EOT
 
-            docker run -d \
-              --name skillsync \
-              --env-file .env \
-              -p 80:5008 \
-              yashwagh30/skillsync:latest
+          docker run -d \
+            --name skillsync \
+            --env-file .env \
+            -p 80:5008 \
+            yashwagh30/skillsync:latest
           EOF
