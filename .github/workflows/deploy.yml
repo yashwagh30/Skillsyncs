@@ -1,4 +1,4 @@
-name: Deploy SkillSync to EC2
+name: SkillSync CI/CD Pipeline
 
 on:
   push:
@@ -6,15 +6,32 @@ on:
       - main
 
 jobs:
-  deploy:
+  build-push-deploy:
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Checkout code
+      # 1️⃣ Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      
+      # 2️⃣ Login to Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 3️⃣ Build Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t yashwagh30/skillsync:latest .
+
+      # 4️⃣ Push Docker image
+      - name: Push Docker image to Docker Hub
+        run: |
+          docker push yashwagh30/skillsync:latest
+
+      # 5️⃣ Setup SSH
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -22,55 +39,28 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      
-      - name: Deploy to EC2
-        env:
-          EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          MONGO_URL: ${{ secrets.MONGO_URL }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_CALLBACK_URL: ${{ secrets.GOOGLE_CALLBACK_URL }}
-          PORT: ${{ secrets.PORT }}
+      # 6️⃣ Deploy on EC2
+      - name: Deploy on EC2
         run: |
-          ssh $EC2_USER@$EC2_HOST << 'EOF'
-            set -e
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
+            docker pull yashwagh30/skillsync:latest
 
-            echo "📁 Preparing app directory"
-            mkdir -p ~/Skillsync
-            cd ~/Skillsync
-
-            if [ ! -d ".git" ]; then
-              git clone https://github.com/yashwagh30/Skillsyncs.git .
-            else
-              git pull origin main
-            fi
-
-            echo "📝 Creating .env file"
-            cat > .env <<EOL
-            MONGO_URL=${MONGO_URL}
-            JWT_SECRET=${JWT_SECRET}
-            GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-            GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-            GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL}
-            NODE_ENV=production
-            PORT=${PORT}
-            EOL
-
-            echo "🐳 Building Docker image"
-            docker build -t skillsync:latest .
-
-            echo "🚀 Restarting container"
             docker stop skillsync || true
             docker rm skillsync || true
+
+            cat <<EOT > .env
+            MONGO_URL=${{ secrets.MONGO_URL }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+            GOOGLE_CALLBACK_URL=${{ secrets.GOOGLE_CALLBACK_URL }}
+            NODE_ENV=production
+            PORT=5008
+            EOT
 
             docker run -d \
               --name skillsync \
               --env-file .env \
-              -p 80:${PORT} \
-              --restart always \
-              skillsync:latest
-
-            echo "✅ Deployment successful"
+              -p 80:5008 \
+              yashwagh30/skillsync:latest
           EOF
