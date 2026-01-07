@@ -1,0 +1,76 @@
+name: Deploy SkillSync to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      
+      - name: Deploy to EC2
+        env:
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          MONGO_URL: ${{ secrets.MONGO_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_CALLBACK_URL: ${{ secrets.GOOGLE_CALLBACK_URL }}
+          PORT: ${{ secrets.PORT }}
+        run: |
+          ssh $EC2_USER@$EC2_HOST << 'EOF'
+            set -e
+
+            echo "📁 Preparing app directory"
+            mkdir -p ~/Skillsync
+            cd ~/Skillsync
+
+            if [ ! -d ".git" ]; then
+              git clone https://github.com/yashwagh30/Skillsyncs.git .
+            else
+              git pull origin main
+            fi
+
+            echo "📝 Creating .env file"
+            cat > .env <<EOL
+            MONGO_URL=${MONGO_URL}
+            JWT_SECRET=${JWT_SECRET}
+            GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+            GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+            GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL}
+            NODE_ENV=production
+            PORT=${PORT}
+            EOL
+
+            echo "🐳 Building Docker image"
+            docker build -t skillsync:latest .
+
+            echo "🚀 Restarting container"
+            docker stop skillsync || true
+            docker rm skillsync || true
+
+            docker run -d \
+              --name skillsync \
+              --env-file .env \
+              -p 80:${PORT} \
+              --restart always \
+              skillsync:latest
+
+            echo "✅ Deployment successful"
+          EOF
