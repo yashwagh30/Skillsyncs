@@ -23,13 +23,11 @@ jobs:
 
       # 3️⃣ Build Docker image
       - name: Build Docker image
-        run: |
-          docker build -t yashwagh30/skillsync:latest .
+        run: docker build -t yashwagh30/skillsync:latest .
 
       # 4️⃣ Push Docker image
-      - name: Push Docker image to Docker Hub
-        run: |
-          docker push yashwagh30/skillsync:latest
+      - name: Push Docker image
+        run: docker push yashwagh30/skillsync:latest
 
       # 5️⃣ Setup SSH
       - name: Setup SSH
@@ -39,10 +37,11 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      # 6️⃣ Deploy on EC2
+      # 6️⃣ Deploy on EC2 (FIXED)
       - name: Deploy on EC2
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+
             docker pull yashwagh30/skillsync:latest
 
             docker stop skillsync || true
@@ -62,9 +61,10 @@ jobs:
             PORT=5008
             EOT
 
-          docker run -d \
-            --name skillsync \
-            --env-file .env \
-            -p 80:5008 \
-            yashwagh30/skillsync:latest
+            docker run -d \
+              --name skillsync \
+              --env-file .env \
+              -p 80:5008 \
+              yashwagh30/skillsync:latest
+
           EOF
