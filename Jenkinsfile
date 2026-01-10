@@ -12,7 +12,7 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/yashwagh30/SkillSync.git'
+                git branch: 'main', url: 'https://github.com/yashwagh30/SkillSyncs.git'
             }
         }
 
