@@ -14,7 +14,7 @@ pipeline {
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
                 git branch: 'main',
                     url: 'https://github.com/yashwagh30/SkillSyncs.git'
@@ -28,24 +28,24 @@ pipeline {
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
-                    bat 'echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin'
+                    bat 'wsl echo $DOCKER_PASS | wsl docker login -u $DOCKER_USER --password-stdin'
                 }
             }
         }
 
         stage('Build Image') {
             steps {
-                bat 'docker build -t %IMAGE_NAME% .'
+                bat 'wsl docker build -t yashwagh30/skillsync:latest .'
             }
         }
 
         stage('Push Image') {
             steps {
-                bat 'docker push %IMAGE_NAME%'
+                bat 'wsl docker push yashwagh30/skillsync:latest'
             }
         }
 
-        stage('Deploy on EC2 (SSH Agent)') {
+        stage('Deploy on EC2 (via WSL SSH)') {
             steps {
                 withCredentials([
                     usernamePassword(
@@ -59,34 +59,25 @@ pipeline {
                     string(credentialsId: 'GOOGLE_CLIENT_SECRET', variable: 'GOOGLE_CLIENT_SECRET'),
                     string(credentialsId: 'GOOGLE_CALLBACK_URL', variable: 'GOOGLE_CALLBACK_URL')
                 ]) {
-                    sshagent(credentials: ['ec2-ssh']) {
-                        bat """
-                        ssh -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% ^
-                        "docker login -u %DOCKER_USER% -p %DOCKER_PASS% && \
-                         docker pull %IMAGE_NAME% && \
-                         docker stop %CONTAINER_NAME% || true && \
-                         docker rm %CONTAINER_NAME% || true && \
-                         docker run -d \
-                            --name %CONTAINER_NAME% \
-                            -p %HOST_PORT%:%APP_PORT% \
-                            -e MONGO_URL=%MONGO_URL% \
-                            -e JWT_SECRET=%JWT_SECRET% \
-                            -e GOOGLE_CLIENT_ID=%GOOGLE_CLIENT_ID% \
-                            -e GOOGLE_CLIENT_SECRET=%GOOGLE_CLIENT_SECRET% \
-                            -e GOOGLE_CALLBACK_URL=%GOOGLE_CALLBACK_URL% \
-                            -e NODE_ENV=production \
-                            --restart unless-stopped \
-                            %IMAGE_NAME%"
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Verify') {
-            steps {
-                sshagent(credentials: ['ec2-ssh']) {
-                    bat 'ssh %EC2_USER%@%EC2_HOST% "docker ps | grep skillsync"'
+                    bat '''
+                    wsl ssh -i ~/.ssh/ec2.pem -o StrictHostKeyChecking=no ubuntu@13.201.53.54 "
+                      docker login -u $DOCKER_USER -p $DOCKER_PASS &&
+                      docker pull yashwagh30/skillsync:latest &&
+                      docker stop skillsync || true &&
+                      docker rm skillsync || true &&
+                      docker run -d \
+                        --name skillsync \
+                        -p 8081:5008 \
+                        -e MONGO_URL=$MONGO_URL \
+                        -e JWT_SECRET=$JWT_SECRET \
+                        -e GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID \
+                        -e GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET \
+                        -e GOOGLE_CALLBACK_URL=$GOOGLE_CALLBACK_URL \
+                        -e NODE_ENV=production \
+                        --restart unless-stopped \
+                        yashwagh30/skillsync:latest
+                    "
+                    '''
                 }
             }
         }
@@ -94,7 +85,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Deployment successful"
+            echo "✅ Deployment successful via WSL"
         }
         failure {
             echo "❌ Deployment failed"
