@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "yashwagh30/skillsync:latest"
+        IMAGE_NAME = "yashwagh30/skillsync:latest"
     }
 
     stages {
@@ -16,9 +16,15 @@ pipeline {
 
         stage('Docker Login') {
             steps {
-                withCredentials([string(credentialsId: 'DOCKER_PASS', variable: 'DOCKER_PASS')]) {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
                     bat '''
-                        echo %DOCKER_PASS% | docker login -u yashwagh30 --password-stdin
+                        echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
                     '''
                 }
             }
@@ -27,7 +33,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 bat '''
-                    docker build -t %DOCKER_IMAGE% .
+                    docker build -t %IMAGE_NAME% .
                 '''
             }
         }
@@ -35,7 +41,7 @@ pipeline {
         stage('Push Docker Image') {
             steps {
                 bat '''
-                    docker push %DOCKER_IMAGE%
+                    docker push %IMAGE_NAME%
                 '''
             }
         }
@@ -43,10 +49,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ Build & Push completed successfully'
+            echo "✅ Docker image built and pushed successfully"
         }
         failure {
-            echo '❌ Pipeline failed'
+            echo "❌ Pipeline failed"
         }
     }
 }
