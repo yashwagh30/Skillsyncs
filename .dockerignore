@@ -1,7 +1,19 @@
-node_modules
+# Git
 .git
 .gitignore
-.env
+
+# Node
+node_modules
+**/node_modules
+
+# Build output
+dist
+**/dist
+
+# Logs
 npm-debug.log
-Dockerfile
-README.md
+yarn-error.log
+
+# Env (do not commit)
+.env
+.env.*
