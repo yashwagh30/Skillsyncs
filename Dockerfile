@@ -1,43 +1,47 @@
 # =========================
-# Stage 1: Build
+# Stage 1: Build frontend
 # =========================
-FROM node:20-alpine AS builder
+FROM node:20-alpine AS frontend-builder
 
-WORKDIR /app
+WORKDIR /frontend
 
-# 1️⃣ Copy ONLY dependency files first (cache friendly)
-COPY package.json package-lock.json ./
+COPY client/package*.json ./
+RUN npm install
 
-# 2️⃣ Install deps ONCE
-RUN npm ci --legacy-peer-deps
-
-# 3️⃣ Copy rest of the code
-COPY client ./client
-COPY server ./server
-COPY shared ./shared
-COPY tsconfig.json .
-COPY tailwind.config.* .
-COPY postcss.config.* .
-
-# 4️⃣ Build frontend + backend
+COPY client .
 RUN npm run build
 
 
 # =========================
-# Stage 2: Runtime
+# Stage 2: Build backend
+# =========================
+FROM node:20-alpine AS backend-builder
+
+WORKDIR /backend
+
+COPY server/package*.json ./
+RUN npm install
+
+COPY server .
+RUN npm run build
+
+
+# =========================
+# Stage 3: Production
 # =========================
 FROM node:20-alpine
 
 WORKDIR /app
+
+# Backend
+COPY --from=backend-builder /backend/dist ./dist
+COPY --from=backend-builder /backend/package*.json ./
+RUN npm install --omit=dev
+
+# Frontend (⚠️ THIS FIXES YOUR ISSUE)
+COPY --from=frontend-builder /frontend/dist/public ./dist/public
+
 ENV NODE_ENV=production
-
-# Copy built app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/client/dist/public ./dist/public
-
-# Copy node_modules directly (🔥 no second npm install)
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./
-
 EXPOSE 5008
+
 CMD ["node", "dist/index.js"]
