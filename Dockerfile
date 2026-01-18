@@ -34,12 +34,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Copy backend build
 COPY --from=backend-builder /app/server/dist ./dist
 COPY --from=backend-builder /app/server/node_modules ./node_modules
 COPY --from=backend-builder /app/server/package.json ./
-
-# Copy frontend build into backend public folder
 COPY --from=frontend-builder /app/client/dist ./dist/public
 
 EXPOSE 5008
