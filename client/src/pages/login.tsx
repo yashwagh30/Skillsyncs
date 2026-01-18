@@ -48,7 +48,7 @@ export default function Login() {
 
   // 🔹 Google OAuth handler
   const handleGoogleLogin = () => {
-    window.location.href = "http://localhost:5008/api/auth/google";
+    window.location.href = "/api/auth/google";
   };
 
   return (

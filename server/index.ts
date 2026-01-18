@@ -6,14 +6,20 @@ import cors from "cors";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import jwt from "jsonwebtoken";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+import { setupVite, log } from "./vite";
 import { storage } from "./storage";
 import { connectDB } from "./db";
 
+// Fix for ES Modules __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // ============================
-// ENV VALIDATION (FAIL FAST)
+// ENV VALIDATION
 // ============================
 const PORT = parseInt(process.env.PORT || "5008", 10);
 const NODE_ENV = process.env.NODE_ENV || "development";
@@ -54,14 +60,12 @@ app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-
       if (
         origin.startsWith("http://localhost") ||
         origin === FRONTEND_URL
       ) {
         return callback(null, true);
       }
-
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
@@ -69,13 +73,10 @@ app.use(
 );
 
 // ============================
-// PASSPORT INIT
+// PASSPORT & AUTH
 // ============================
 app.use(passport.initialize());
 
-// ============================
-// GOOGLE OAUTH STRATEGY
-// ============================
 passport.use(
   new GoogleStrategy(
     {
@@ -85,14 +86,9 @@ passport.use(
     },
     async (_accessToken, _refreshToken, profile, done) => {
       try {
-        if (!profile.emails?.length) {
-          return done(new Error("No email from Google"), undefined);
-        }
-
+        if (!profile.emails?.length) return done(new Error("No email from Google"), undefined);
         const email = profile.emails[0].value;
-
         let user = await storage.getUserByEmail(email);
-
         if (!user) {
           user = await storage.createUser({
             email,
@@ -103,7 +99,6 @@ passport.use(
             experienceLevel: null,
           });
         }
-
         return done(null, user);
       } catch (err) {
         return done(err as Error, undefined);
@@ -112,34 +107,15 @@ passport.use(
   )
 );
 
-// ============================
-// AUTH ROUTES
-// ============================
-app.get(
-  "/api/auth/google",
-  passport.authenticate("google", {
-    scope: ["profile", "email"],
-    session: false,
-  })
-);
+app.get("/api/auth/google", passport.authenticate("google", { scope: ["profile", "email"], session: false }));
 
 app.get(
   "/api/auth/google/callback",
-  passport.authenticate("google", {
-    session: false,
-    failureRedirect: `${FRONTEND_URL}/login?error=oauth_failed`,
-  }),
+  passport.authenticate("google", { session: false, failureRedirect: `${FRONTEND_URL}/login?error=oauth_failed` }),
   (req: any, res: Response) => {
     try {
-      const token = jwt.sign(
-        { userId: req.user.id, email: req.user.email },
-        JWT_SECRET,
-        { expiresIn: "7d" }
-      );
-
-      res.redirect(
-        `${FRONTEND_URL}/oauth-success?token=${encodeURIComponent(token)}`
-      );
+      const token = jwt.sign({ userId: req.user.id, email: req.user.email }, JWT_SECRET, { expiresIn: "7d" });
+      res.redirect(`${FRONTEND_URL}/oauth-success?token=${encodeURIComponent(token)}`);
     } catch {
       res.redirect(`${FRONTEND_URL}/login?error=oauth_callback_failed`);
     }
@@ -154,25 +130,32 @@ app.get(
     const server = await registerRoutes(app);
 
     // Global error handler
-    app.use(
-      (err: any, _req: Request, res: Response, _next: NextFunction) => {
-        console.error(err);
-        res.status(err.status || 500).json({
-          message: err.message || "Internal Server Error",
-        });
-      }
-    );
+    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+      console.error(err);
+      res.status(err.status || 500).json({ message: err.message || "Internal Server Error" });
+    });
 
-    // API 404
+    // API 404 (Must happen before static files catch-all)
     app.use("/api/*", (_req, res) => {
       res.status(404).json({ message: "API route not found" });
     });
 
-    // Vite dev / Static prod
+    // ===============================================
+    // ✅ CRITICAL FIX: STATIC FILE SERVING
+    // ===============================================
     if (NODE_ENV === "development") {
       await setupVite(app, server);
     } else {
-      serveStatic(app);
+      // In Docker, files are in "dist/public".
+      // Since this file is running from "dist/index.js", "public" is right next to it.
+      const publicPath = path.join(__dirname, "public");
+      
+      app.use(express.static(publicPath));
+      
+      // Serve index.html for any unknown routes (React Router)
+      app.get("*", (_req, res) => {
+        res.sendFile(path.join(publicPath, "index.html"));
+      });
     }
 
     // START SERVER
@@ -180,8 +163,6 @@ app.get(
       log(`✅ Server running on port ${PORT}`);
       log(`🌍 Backend: ${BACKEND_URL}`);
       log(`🖥️ Frontend: ${FRONTEND_URL}`);
-      log(`🔐 JWT: configured`);
-      log(`🔐 Google OAuth: configured`);
     });
   } catch (error) {
     log(`❌ Failed to start server: ${error}`, "error");

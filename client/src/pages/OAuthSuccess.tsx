@@ -20,7 +20,7 @@ export default function OAuthSuccess() {
 
         localStorage.setItem("token", token);
 
-        const response = await fetch("http://localhost:5008/api/auth/me", {
+        const response = await fetch("/api/auth/me", {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",

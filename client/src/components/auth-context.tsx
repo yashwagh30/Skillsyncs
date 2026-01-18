@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUserData = async (userToken: string) => {
     try {
-      const response = await fetch('http://localhost:5008/api/auth/me', {
+      const response = await fetch('/api/auth/me', {
         headers: {
           Authorization: `Bearer ${userToken}`,
         },
@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     localStorage.removeItem('token');
     // Optional: Call logout endpoint
-    fetch('http://localhost:5008/api/auth/logout', { method: 'POST' });
+    fetch('/api/auth/logout', { method: 'POST' });
   };
 
   return (
